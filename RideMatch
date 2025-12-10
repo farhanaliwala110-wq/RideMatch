@@ -1,0 +1,394 @@
+// functions/index.js
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const express = require('express');
+const cors = require('cors');
+admin.initializeApp();
+const db = admin.firestore();
+const app = express();
+app.use(cors({ origin: true }));
+app.use(express.json());
+// Helper: mocked providers
+function mockedOffers(pickup, drop) {
+// Simple mocked data: prices scale with distance approx.
+const distFactor = Math.max(1, Math.abs(pickup.lat - drop.lat) +
+Math.abs(pickup.lng - drop.lng));
+const base = Math.round(100 * distFactor);
+const now = Date.now();
+return [
+{ provider: 'uber', price: Math.round(base * 1.8), eta: 3 +
+Math.round(Math.random() * 5), vehicle: 'Car' },
+{ provider: 'lyft', price: Math.round(base * 1.7), eta: 2 +
+Math.round(Math.random() * 6), vehicle: 'Car' },
+{ provider: 'bolt', price: Math.round(base * 1.5), eta: 4 +
+Math.round(Math.random() * 4), vehicle: 'Car' },
+{ provider: 'bikeX', price: Math.round(base * 0.9), eta: 6 +
+Math.round(Math.random() * 8), vehicle: 'Bike' }
+];
+}
+// POST /api/compare
+app.post('/api/compare', async (req, res) => {
+try {
+const { pickup, drop } = req.body;
+if (!pickup || !drop) return res.status(400).json({ error: 'pickup and drop 
+required' });
+const offers = mockedOffers(pickup, drop);
+return res.json({ offers });
+} catch (err) {
+console.error(err);
+return res.status(500).json({ error: 'internal' });
+}
+});
+// POST /api/book
+app.post('/api/book', async (req, res) => {
+try {
+const { userId, provider, pickup, drop, fare } = req.body;
+if (!userId || !provider || !pickup || !drop || fare == null) {
+return res.status(400).json({ error: 'missing fields' });
+}
+const booking = {
+userId,
+provider,
+pickup,
+drop,
+fare,
+status: 'confirmed',
+createdAt: admin.firestore.FieldValue.serverTimestamp()
+};
+const docRef = await db.collection('bookings').add(booking);
+return res.json({ bookingId: docRef.id });
+} catch (err) {
+console.error(err);
+return res.status(500).json({ error: 'internal' });
+}
+});
+{
+"name": "functions",
+"version": "1.0.0",
+"main": "index.js",
+"engines": { "node": "18" },
+"dependencies": {
+"cors": "^2.8.5",
+"express": "^4.18.2",
+"firebase-admin": "^11.0.0",
+"firebase-functions": "^4.0.0"
+}
+}
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'screens/splash.dart';
+Future<void> main() async {
+WidgetsFlutterBinding.ensureInitialized();
+await dotenv.load(fileName: ".env");
+runApp(const MyApp());
+}
+class MyApp extends StatelessWidget {
+const MyApp({super.key});
+@override
+Widget build(BuildContext context) {
+return MaterialApp(
+title: 'RideMatch',
+theme: ThemeData(primarySwatch: Colors.blue),
+home: const SplashScreen(),
+);
+}
+}
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'login_otp.dart';
+class SplashScreen extends StatefulWidget {
+const SplashScreen({Key? key}) : super(key: key);
+@override
+State<SplashScreen> createState() => _SplashScreenState();
+}
+class _SplashScreenState extends State<SplashScreen> {
+@override
+void initState() {
+super.initState();
+Timer(const Duration(seconds: 2), () {
+Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) =>
+const LoginOtp()));
+});
+}
+@override
+Widget build(BuildContext context) {
+return Scaffold(
+body: Center(child: Text('RideMatch', style: TextStyle(fontSize: 32,
+fontWeight: FontWeight.bold))),
+);
+}
+}
+import 'package:flutter/material.dart';
+import 'home_map.dart';
+class LoginOtp extends StatefulWidget {
+const LoginOtp({Key? key}) : super(key: key);
+@override
+State<LoginOtp> createState() => _LoginOtpState();
+}
+class _LoginOtpState extends State<LoginOtp> {
+final _phoneCtrl = TextEditingController();
+final _codeCtrl = TextEditingController();
+bool _codeSent = false;
+void _sendOtp() {
+// Mock: just flip state, don't call Firebase.
+setState(() => _codeSent = true);
+}
+void _verifyOtp() {
+// Mock success
+Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const
+HomeMap()));
+}
+@override
+Widget build(BuildContext context) {
+return Scaffold(
+appBar: AppBar(title: Text('Login (Mock OTP)')),
+body: Padding(
+padding: const EdgeInsets.all(16.0),
+child: Column(children: [
+TextField(controller: _phoneCtrl, decoration:
+InputDecoration(labelText: 'Phone')),
+SizedBox(height: 12),
+if (!_codeSent)
+ElevatedButton(onPressed: _sendOtp, child: Text('Send OTP (mock)'))
+else ...[
+TextField(controller: _codeCtrl, decoration:
+InputDecoration(labelText: 'Enter OTP (any)')),
+ElevatedButton(onPressed: _verifyOtp, child: Text('Verify'))
+]
+]),
+),
+);
+}
+}
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'compare.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+class HomeMap extends StatefulWidget {
+const HomeMap({Key? key}) : super(key: key);
+@override
+State<HomeMap> createState() => _HomeMapState();
+}
+class _HomeMapState extends State<HomeMap> {
+late GoogleMapController mapController;
+final LatLng _center = const LatLng(37.7749, -122.4194);
+@override
+Widget build(BuildContext context) {
+// Note: set your GOOGLE_MAPS_API_KEY in platform-specific config.
+return Scaffold(
+appBar: AppBar(title: Text('Home')),
+body: GoogleMap(
+onMapCreated: (controller) => mapController = controller,
+initialCameraPosition: CameraPosition(target: _center, zoom: 12.0),
+),
+floatingActionButton: FloatingActionButton(
+child: Icon(Icons.search),
+onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_)
+=> CompareScreen())),
+),
+);
+}
+}
+import 'package:flutter/material.dart';
+import '../services/api.dart';
+class CompareScreen extends StatefulWidget {
+const CompareScreen({Key? key}) : super(key: key);
+@override
+State<CompareScreen> createState() => _CompareScreenState();
+}
+class _CompareScreenState extends State<CompareScreen> {
+bool loading = false;
+List offers = [];
+void _compare() async {
+setState(() => loading = true);
+final res = await Api.compare({ 'pickup': { 'lat': 37.7749, 'lng':
+-122.4194 }, 'drop': { 'lat': 37.7849, 'lng': -122.4094 } });
+setState(() { offers = res['offers'] ?? []; loading = false; });
+}
+@override
+Widget build(BuildContext context) {
+return Scaffold(
+appBar: AppBar(title: Text('Compare')),
+body: Column(children: [
+ElevatedButton(onPressed: _compare, child: Text('Get Offers (mock)')),
+if (loading) CircularProgressIndicator(),
+Expanded(
+child: ListView.builder(
+itemCount: offers.length,
+itemBuilder: (_, i) {
+final o = offers[i];
+return ListTile(
+title: Text('${o['provider']} — ${o['vehicle']}'),
+subtitle: Text('Fare: ${o['price']} | ETA: ${o['eta']} min'),
+trailing: ElevatedButton(onPressed: () {
+Navigator.push(context, MaterialPageRoute(builder: (_) =>
+BookingScreen(offer: o)));
+}, child: Text('Book')),
+);
+}
+),
+)
+]),
+);
+}
+}
+import 'package:flutter/material.dart';
+import '../services/api.dart';
+class BookingScreen extends StatefulWidget {final Map offer;
+BookingScreen({required this.offer});
+@override
+State<BookingScreen> createState() => _BookingScreenState();
+}
+class _BookingScreenState extends State<BookingScreen> {
+bool booking = false;
+String? bookingId;
+void _book() async {
+setState(() => booking = true);
+final res = await Api.book({
+'userId': 'mock-user-1',
+'provider': widget.offer['provider'],
+'pickup': { 'lat': 37.7749, 'lng': -122.4194 },
+'drop': { 'lat': 37.7849, 'lng': -122.4094 },
+'fare': widget.offer['price']
+});
+setState(() { bookingId = res['bookingId']; booking = false; });
+}
+@override
+Widget build(BuildContext context) {
+return Scaffold(
+appBar: AppBar(title: Text('Booking')),
+body: Center(
+child: booking ? CircularProgressIndicator() : Column(
+mainAxisSize: MainAxisSize.min,
+children: [
+Text('Provider: ${widget.offer['provider']}'),
+Text('Fare: ${widget.offer['price']}'),
+ElevatedButton(onPressed: _book, child: Text('Confirm Booking')),
+if (bookingId != null) Text('Booked! id: $bookingId')
+],
+),
+),
+);
+}
+}
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+class Api {
+static final String base = dotenv.env['FUNCTIONS_BASE_URL'] ?? 'http://
+localhost:5001/your-project/us-central1/api';
+static Future<Map> compare(Map body) async {final r = await http.post(Uri.parse('$base/api/compare'), body:
+jsonEncode(body), headers: { 'Content-Type': 'application/json' });
+return jsonDecode(r.body) as Map;
+}
+static Future<Map> book(Map body) async {
+final r = await http.post(Uri.parse('$base/api/book'), body:
+jsonEncode(body), headers: { 'Content-Type': 'application/json' });
+return jsonDecode(r.body) as Map;
+}
+}
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>RideMatch Admin</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-
+compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-
+compat.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<h1>RideMatch — Admin</h1>
+<div>Total Bookings: <span id="count">0</span></div>
+<div>Total Commission (15%): <span id="commission">0</span></div>
+<ul id="list"></ul>
+<script>
+// TODO: replace with your app's Firebase config (for quick local testing 
+you can keep it here)
+const firebaseConfig = {
+apiKey: "REPLACE_ME",
+authDomain: "REPLACE_ME",
+projectId: "REPLACE_ME"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+async function load() {
+const snapshot = await
+db.collection('bookings').orderBy('createdAt','desc').get();
+const list = document.getElementById('list');
+let total = 0;
+list.innerHTML = '';
+snapshot.forEach(doc => {
+const b = doc.data();
+total += (b.fare || 0);
+const li = document.createElement('li');
+li.textContent = `${doc.id} — ${b.userId} — ${b.provider} — fare: $
+{b.fare} — status: ${b.status}`;
+list.appendChild(li);
+});
+document.getElementById('count').textContent = snapshot.size;
+document.getElementById('commission').textContent = (total *
+0.15).toFixed(2);
+}
+load();
+</script>
+</body>
+</html>
+  # mobile/.env
+FUNCTIONS_BASE_URL=http://localhost:5001/your-project/us-central1/api
+GOOGLE_MAPS_API_KEY=REPLACE_WITH_YOUR_GOOGLE_MAPS_API_KEY
+  # functions/.env.example (for local usage if needed)
+# If using Firebase emulator, functions will use application default 
+credentials.
+# Example: any env you need for production
+NODE_ENV=development
+  {
+"functions": {
+"source": "functions"
+},
+"hosting": [
+{
+"target": "admin",
+"public": "hosting/admin",
+"ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+}
+]
+}
+  rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+ match /users/{uid} {
+ allow read, write: if request.auth != null && request.auth.uid == uid;
+ }
+ match /bookings/{bid} {
+ // Allow writes from functions service account, and allow reads for 
+authenticated users
+ allow create: if request.auth != null; // for emulator simplicity
+ allow read: if request.auth != null;
+ allow update, delete: if false;
+ }
+ // Admin-only area could be restricted by project IAM in production
+ }
+}
+  # RideMatch — Starter
+This repository contains a Flutter mobile app and Firebase Cloud Functions + 
+Hosting example for a mocked ride comparison / booking flow.
+## Prerequisites
+- Flutter SDK
+- Node.js 18+
+- Firebase CLI (`npm install -g firebase-tools`)
+- (Optional) Docker
+## 1) Create Firebase project
+1. Go to https://console.firebase.google.com and create a new project (e.g. 
+`ridematch-xyz`).
+2. Enable **Authentication -> Sign-in method -> Phone** (for real phone auth). 
+For local mock testing the app uses a mocked flow; to use real phone OTP enable 
+this.
+3. Enable **Firestore** (in Native mode).
+4. Enable **Cloud Functions** (Node 18 recommended).
+5. Set up **Hosting** for the admin static page.
+## 2) Clone repository
+```bash
+git clone <this-repo> RideMatch
+cd RideMatch
